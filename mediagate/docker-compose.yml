@@ -1,0 +1,63 @@
+# Local / single-host deployment. Supabase (Postgres, Auth, Storage) is external — use a
+# hosted project or `supabase start` from the Supabase CLI.
+#
+#   cp .env.example .env   # fill in values
+#   docker compose up --build
+
+services:
+  api:
+    build: ./backend
+    env_file: .env
+    ports: ["8000:8000"]
+    volumes: ["media-temp:/data"]   # shared with worker (needed for STORAGE_BACKEND=local)
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  worker:
+    build: ./backend
+    command: ["python", "-m", "app.worker.main"]
+    env_file: .env
+    environment:
+      WORKER_HEALTH_PORT: "8081"
+    volumes: ["media-temp:/data"]
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 2g }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8081/healthz')"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+    ports: ["3000:3000"]
+    depends_on: [api]
+    restart: unless-stopped
+
+  # Optional: shared rate-limit store when running more than one API replica.
+  redis:
+    image: redis:7-alpine
+    profiles: ["redis"]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+volumes:
+  media-temp:

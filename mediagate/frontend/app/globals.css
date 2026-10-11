@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    /* Self-hosted via @fontsource (no third-party font requests at runtime). */
+    --font-sans: "Inter Variable";
+    --font-display: "Plus Jakarta Sans Variable";
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    @apply bg-white font-sans text-ink;
+  }
+  ::selection {
+    @apply bg-brand-100 text-brand-900;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-500 ring-offset-2 ring-offset-white;
+  }
+}
+
+@layer components {
+  .container-page {
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
+  }
+  .card {
+    @apply rounded-xl2 border border-line bg-white shadow-card;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition
+      disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 text-white shadow-[0_1px_0_rgba(255,255,255,0.2)_inset,0_8px_20px_-8px_rgba(31,79,240,0.6)]
+      hover:bg-brand-700 active:translate-y-px;
+  }
+  .btn-secondary {
+    @apply btn border border-line bg-white text-ink hover:border-brand-200 hover:bg-brand-50;
+  }
+  .btn-ghost {
+    @apply btn text-ink-soft hover:bg-brand-50 hover:text-ink;
+  }
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-[0.14em] text-brand-700;
+  }
+  .input {
+    @apply w-full rounded-xl border border-line bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-mute
+      focus:border-brand-400 focus:shadow-ring focus:outline-none;
+  }
+}
+
+/* A faint grid that gives the hero depth without decoration. */
+.hero-grid {
+  background-image: linear-gradient(to right, rgba(31, 79, 240, 0.06) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(31, 79, 240, 0.06) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 30%, black 40%, transparent 100%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
