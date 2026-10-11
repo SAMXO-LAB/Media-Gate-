@@ -53,7 +53,14 @@ cd frontend
 cp .env.local.example .env.local   # NEXT_PUBLIC_API_URL, NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
 npm ci && npm run build && npm start
 ```
-Vercel: import `frontend/`, set the three `NEXT_PUBLIC_*` variables, deploy. Docker: see `frontend/Dockerfile`
+Vercel (uses `frontend/vercel.json`):
+1. New Project → import the repo → **Root Directory: `frontend`** (framework auto-detects as Next.js).
+2. Settings → Environment Variables (Production + Preview): `NEXT_PUBLIC_API_URL`,
+   `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`. They are inlined at build time, so redeploy after changing them.
+3. Deploy, then add the Vercel domain to the backend's `CORS_ORIGINS` and `FRONTEND_URL`, and to
+   Supabase Auth → URL configuration (Site URL + `https://<domain>/auth/callback`).
+The functions region is `bom1` (Mumbai); change `regions` in `vercel.json` to sit near your API.
+The FastAPI API and worker don't go on Vercel: the worker needs a long-running process with FFmpeg. Docker: see `frontend/Dockerfile`
 (build args are inlined at build time). Add the frontend origin to the backend's `CORS_ORIGINS`.
 
 ## 5. All-in-one (single host)
