@@ -32,6 +32,10 @@ async def init_pool(min_size: int = 1, max_size: int = 10) -> asyncpg.Pool:
         dsn = get_settings().database_url.get_secret_value()
         if not dsn:
             raise RuntimeError("DATABASE_URL is not set")
+        if ".supabase.co:5432" in dsn and "pooler" not in dsn:
+            # Supabase direct connections are IPv6-only; Vercel Functions can't reach them.
+            import logging
+            logging.getLogger("mediagate").warning("database_url_is_direct_connection_use_pooler")
         # statement_cache_size=0 keeps us compatible with Supabase's transaction pooler (port 6543).
         _pool = await asyncpg.create_pool(dsn, min_size=min_size, max_size=max_size,
                                           statement_cache_size=0, init=_init, command_timeout=30)
@@ -47,7 +51,9 @@ async def close_pool() -> None:
 
 def pool() -> asyncpg.Pool:
     if _pool is None:
-        raise RuntimeError("Database pool not initialised")
+        from app.core.errors import AppError
+        raise AppError("The database is unreachable right now. Please try again shortly.",
+                       code="database_unavailable", status_code=503)
     return _pool
 
 

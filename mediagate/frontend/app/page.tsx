@@ -32,6 +32,9 @@ const ERROR_COPY: Record<string, { title: string; hint?: string }> = {
   platform_disabled: { title: "Temporarily paused", hint: "This platform has been paused by the administrator." },
   connection_expired: { title: "Your connection expired", hint: "Reconnect your account on the Connections page." },
   network_error: { title: "Can't reach the server", hint: "Check your connection and try again." },
+  server_unavailable: { title: "The server had a problem", hint: "It didn't finish this request. Please try again in a moment." },
+  database_unavailable: { title: "Temporarily unavailable", hint: "Our database can't be reached right now. Please try again shortly." },
+  internal_error: { title: "Something went wrong", hint: "An unexpected error occurred. Please try again." },
 };
 
 export default function HomePage() {

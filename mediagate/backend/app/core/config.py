@@ -61,6 +61,15 @@ class Settings(BaseSettings):
     redis_url: str = Field("", alias="REDIS_URL")  # optional; in-memory limiter otherwise
     trust_proxy_headers: bool = Field(False, alias="TRUST_PROXY_HEADERS")
 
+    @field_validator("*", mode="before")
+    @classmethod
+    def _strip_inline_comment(cls, v: object) -> object:
+        # Tolerate values pasted from .env files with trailing "  # comment" text.
+        if isinstance(v, str):
+            import re
+            v = re.sub(r"\s+#.*$", "", v).strip()
+        return v
+
     @field_validator("cors_origins", mode="before")
     @classmethod
     def _split(cls, v: object) -> object:

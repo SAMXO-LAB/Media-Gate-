@@ -44,10 +44,15 @@ export async function api<T>(path: string, init: RequestInit & { json?: unknown 
   if (!res.ok) {
     const err = data?.error ?? {};
     const retry = res.headers.get("retry-after");
+    // No structured error body means the request never reached the app (crash, timeout, proxy).
+    const fallback =
+      res.status >= 500
+        ? `The server couldn't handle this request (error ${res.status}). Please try again in a moment.`
+        : `Request failed (${res.status}).`;
     throw new ApiError(
       res.status,
-      err.code ?? "http_error",
-      err.message ?? `Request failed (${res.status}).`,
+      err.code ?? (res.status >= 500 ? "server_unavailable" : "http_error"),
+      err.message ?? fallback,
       err.details ?? null,
       retry ? Number(retry) : null,
     );

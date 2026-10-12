@@ -207,8 +207,9 @@ async def test_health_reachable_under_api_prefix(client):
     assert (await client.get("/api/healthz")).json() == {"status": "ok"}
 
 
-async def test_lazy_startup_returns_503_when_db_unreachable(monkeypatch):
-    """With lifespan-less runtimes, the first request initialises the pool; failures become a clean 503."""
+async def test_api_keeps_serving_when_db_unreachable(monkeypatch):
+    """A dead database must not crash startup (lifespan) or requests: health and analyze still
+    answer, and DB-backed endpoints return a structured 503 instead of a bare 500."""
     import httpx
 
     from app import main
@@ -219,7 +220,32 @@ async def test_lazy_startup_returns_503_when_db_unreachable(monkeypatch):
 
     monkeypatch.setattr(db, "_pool", None)
     monkeypatch.setattr(db, "init_pool", boom)
+    monkeypatch.setattr(main, "_db_retry_at", 0.0)
     app = main.create_app(with_lifespan=True)
-    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
-        r = await c.get("/api/healthz")
-    assert r.status_code == 503 and r.json()["error"]["code"] == "unavailable"
+    async with app.router.lifespan_context(app):          # startup must not raise
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
+            assert (await c.get("/api/healthz")).status_code == 200
+            r = await c.post("/api/analyze", json={"url": "https://evil.com/x"})
+            assert r.status_code == 400 and r.json()["error"]["code"] == "unsupported_platform"
+            r = await c.get("/api/readyz")
+            assert r.status_code == 503 and r.json()["checks"]["database"] == "error"
+
+
+def test_pool_unavailable_is_503():
+    from app.core.errors import AppError
+    from app.services import db
+    saved, db._pool = db._pool, None
+    try:
+        with pytest.raises(AppError) as ei:
+            db.pool()
+        assert ei.value.status_code == 503 and ei.value.code == "database_unavailable"
+    finally:
+        db._pool = saved
+
+
+def test_settings_strip_inline_comments(monkeypatch):
+    from app.core.config import Settings
+    monkeypatch.setenv("MAX_FILE_BYTES", "524288000                  # 500 MB")
+    monkeypatch.setenv("APP_ENV", "production   # development | production")
+    s = Settings()
+    assert s.max_file_bytes == 524288000 and s.is_production

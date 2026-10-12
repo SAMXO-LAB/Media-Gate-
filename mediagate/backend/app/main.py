@@ -25,14 +25,27 @@ ON_VERCEL = bool(os.getenv("VERCEL"))
 POOL_MAX = 3 if ON_VERCEL else 10
 
 
+_db_retry_at = 0.0  # monotonic time before which we don't retry a failed DB connect
+
+
 async def ensure_ready() -> None:
-    """Idempotent: open the DB pool and refresh admin config if stale.
+    """Best effort: open the DB pool and refresh admin config if stale. Never raises.
 
     Called from lifespan in containers and lazily per request, so the API also works on
-    runtimes that don't run ASGI lifespan or freeze background tasks between requests."""
+    runtimes that don't run ASGI lifespan or freeze background tasks between requests.
+    If the database is unreachable the API keeps serving: endpoints that need it answer
+    503 `database_unavailable`, everything else (e.g. analyzing a YouTube link) still works."""
+    global _db_retry_at
     from app.services import db, runtime_config
     if db._pool is None:
-        await db.init_pool(max_size=POOL_MAX)
+        if time.monotonic() < _db_retry_at:
+            return
+        try:
+            await asyncio.wait_for(db.init_pool(max_size=POOL_MAX), timeout=8)
+        except Exception as exc:  # noqa: BLE001
+            _db_retry_at = time.monotonic() + 10
+            log.error("database_connect_failed", extra={"status": type(exc).__name__})
+            return
     await runtime_config.maybe_refresh(max_age=30)
 
 
@@ -78,12 +91,7 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
                                            "details": None, "request_id": request.state.request_id}}, 413)
         start = time.perf_counter()
         if with_lifespan:
-            try:
-                await ensure_ready()
-            except Exception:  # noqa: BLE001
-                log.exception("startup_failed")
-                return JSONResponse({"error": {"code": "unavailable", "message": "Service is starting up. Please retry.",
-                                               "details": None, "request_id": request.state.request_id}}, 503)
+            await ensure_ready()
         response = await call_next(request)
         h = response.headers
         h["X-Request-ID"] = request.state.request_id
