@@ -3,7 +3,8 @@ import { NextResponse, type NextRequest } from "next/server";
 // Per-request nonce-based Content Security Policy. Next.js applies the nonce to its own scripts.
 export function middleware(request: NextRequest) {
   const nonce = btoa(crypto.randomUUID());
-  const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+  const api = process.env.NEXT_PUBLIC_API_URL ?? ""; // empty = same origin, covered by 'self'
+
   const supabase = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const dev = process.env.NODE_ENV !== "production";
 
@@ -14,7 +15,7 @@ export function middleware(request: NextRequest) {
     // Thumbnails are loaded directly from platform CDNs returned by official APIs.
     `img-src 'self' data: blob: https://i.ytimg.com https://*.cdninstagram.com https://*.fbcdn.net https://pbs.twimg.com`,
     `font-src 'self'`,
-    `connect-src 'self' ${api} ${supabase} ${supabase.replace("https://", "wss://")}`.trim(),
+    `connect-src 'self' ${api} ${supabase} ${supabase.replace("https://", "wss://")}`.replace(/\s+/g, " ").trim(),
     `frame-ancestors 'none'`,
     `base-uri 'self'`,
     `form-action 'self'`,

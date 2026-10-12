@@ -2,7 +2,9 @@
 
 import { getSupabase, supabaseConfigured } from "./supabase";
 
-export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
+// Empty = same origin. On Vercel (services), /api/* on the site's own domain routes to the backend.
+// Set NEXT_PUBLIC_API_URL only when the API lives on another origin (e.g. http://localhost:8000 in dev).
+export const API_URL = (process.env.NEXT_PUBLIC_API_URL ?? "").replace(/\/$/, "");
 
 export class ApiError extends Error {
   constructor(

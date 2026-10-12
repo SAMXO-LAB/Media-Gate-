@@ -54,6 +54,17 @@ async def load() -> None:
     apply({r["platform"]: r["enabled"] for r in rows}, setting or {})
 
 
+async def maybe_refresh(max_age: float = 30.0) -> None:
+    """Reload config if older than max_age seconds. Failures keep the last known values."""
+    if time.time() - _state["loaded_at"] < max_age:
+        return
+    _state["loaded_at"] = time.time()  # avoid a thundering herd of reloads
+    try:
+        await load()
+    except Exception:  # noqa: BLE001
+        log.warning("runtime_config_refresh_failed")
+
+
 async def refresh_loop(interval: float = 30.0) -> None:
     while True:
         try:

@@ -200,3 +200,26 @@ async def test_local_file_token(client, tmp_path, monkeypatch):
     assert (await client.get(f"/api/files/{tampered}")).status_code == 400
     escape = crypto.sign({"k": "../../../etc/passwd", "f": "x"}, 60)
     assert (await client.get(f"/api/files/{escape}")).status_code == 404
+
+
+async def test_health_reachable_under_api_prefix(client):
+    # Vercel routes only /api/* to the backend, so health must exist there too.
+    assert (await client.get("/api/healthz")).json() == {"status": "ok"}
+
+
+async def test_lazy_startup_returns_503_when_db_unreachable(monkeypatch):
+    """With lifespan-less runtimes, the first request initialises the pool; failures become a clean 503."""
+    import httpx
+
+    from app import main
+    from app.services import db
+
+    async def boom(**kw):
+        raise OSError("db down")
+
+    monkeypatch.setattr(db, "_pool", None)
+    monkeypatch.setattr(db, "init_pool", boom)
+    app = main.create_app(with_lifespan=True)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as c:
+        r = await c.get("/api/healthz")
+    assert r.status_code == 503 and r.json()["error"]["code"] == "unavailable"

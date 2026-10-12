@@ -53,15 +53,39 @@ cd frontend
 cp .env.local.example .env.local   # NEXT_PUBLIC_API_URL, NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY
 npm ci && npm run build && npm start
 ```
-Vercel (uses `frontend/vercel.json`):
-1. New Project → import the repo → **Root Directory: `frontend`** (framework auto-detects as Next.js).
-2. Settings → Environment Variables (Production + Preview): `NEXT_PUBLIC_API_URL`,
-   `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`. They are inlined at build time, so redeploy after changing them.
-3. Deploy, then add the Vercel domain to the backend's `CORS_ORIGINS` and `FRONTEND_URL`, and to
-   Supabase Auth → URL configuration (Site URL + `https://<domain>/auth/callback`).
-The functions region is `bom1` (Mumbai); change `regions` in `vercel.json` to sit near your API.
-The FastAPI API and worker don't go on Vercel: the worker needs a long-running process with FFmpeg. Docker: see `frontend/Dockerfile`
+Vercel: see **Vercel (single project with Services)** below. Docker: see `frontend/Dockerfile`
 (build args are inlined at build time). Add the frontend origin to the backend's `CORS_ORIGINS`.
+
+## Vercel (single project with Services)
+`vercel.json` sits at the **repository root** (next to the `mediagate/` folder) and defines two services
+on one domain:
+
+| Service | Root | Public path | Notes |
+|---|---|---|---|
+| `backend` | `mediagate/backend` | `/api/*` | FastAPI as a Vercel Function (`app.main:app`); receives the full path, e.g. `/api/analyze` |
+| `frontend` | `mediagate/frontend` | everything else | Next.js; calls `/api/*` on its own origin from the browser |
+
+No service bindings: the frontend only calls the API from the browser, and the API never calls the frontend.
+
+**The worker cannot run on Vercel.** It is a long-running process (job queue loop, FFmpeg, cleanup every
+minute). Run it on Render, Railway or Fly.io with the backend Docker image and
+`python -m app.worker.main`, using the same `DATABASE_URL`, Supabase and platform settings. Without it,
+download jobs stay queued (analysis still works).
+
+Steps:
+1. New Project → import the repo → Root Directory `./` → Application Preset **Services** (Vercel reads `vercel.json`).
+2. Environment variables (shared by both services):
+   - Backend: everything in `.env.example` except `TEMP_DIR`, plus `STORAGE_BACKEND=supabase`,
+     `TRUST_PROXY_HEADERS=true`, `REDIS_URL` (e.g. Upstash — needed because each function instance
+     otherwise keeps its own rate-limit counters), `PUBLIC_API_URL` and `FRONTEND_URL` = your Vercel domain,
+     `CORS_ORIGINS` = your Vercel domain.
+   - `DATABASE_URL`: use the Supabase **transaction pooler** (port 6543); each function instance opens at most 3 connections.
+   - Frontend: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Leave `NEXT_PUBLIC_API_URL` **unset** (same origin).
+3. Settings → Functions → Function Region: pick the region closest to your Supabase project.
+4. Deploy, then check `https://<domain>/api/healthz` and `/api/readyz` (`ffmpeg: not_installed` is expected on Vercel).
+5. OAuth redirect URIs become `https://<domain>/api/connections/{instagram|x}/callback`; add
+   `https://<domain>/auth/callback` in Supabase Auth → URL configuration.
+6. Local: `vercel dev` runs both services; or run uvicorn + `next dev` with `NEXT_PUBLIC_API_URL=http://localhost:8000`.
 
 ## 5. All-in-one (single host)
 ```bash

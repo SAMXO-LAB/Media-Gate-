@@ -22,7 +22,7 @@ docs/            ARCHITECTURE (capability matrix, flow, security) · API · PLAT
 supabase/        SQL migrations: schema, RLS, functions/seed/bucket
 backend/app/     core (config, auth, errors, rate limit, crypto, logging) · net (URL validation, SSRF-safe HTTP)
                  adapters (youtube, instagram, x) · services · routes · worker (processor, ffmpeg, cleanup)
-backend/tests/   155 tests: URL validation, allowlists, SSRF, adapters, auth, rate limits, expiry, cleanup,
+backend/tests/   157 tests: URL validation, allowlists, SSRF, adapters, auth, rate limits, expiry, cleanup,
                  real FFmpeg, and Postgres integration (RLS, queue, end-to-end worker)
 frontend/        app (analyzer, login, connections, admin) · components · lib
 ```
@@ -32,11 +32,15 @@ frontend/        app (analyzer, login, connections, admin) · components · lib
 cp .env.example .env                       # fill Supabase + whichever platforms you have keys for
 supabase db push                           # or run supabase/migrations/*.sql in order
 cd backend && pip install -r requirements-dev.txt
-uvicorn app.main:app --reload              # API on :8000, docs at /docs
+uvicorn app.main:app --reload              # API on :8000, docs at /api/docs
 python -m app.worker.main                  # in another terminal
 cd ../frontend && cp .env.local.example .env.local && npm install && npm run dev   # :3000
 ```
 Platforms without credentials show a clear "Not configured" state. See [docs/PLATFORM_SETUP.md](docs/PLATFORM_SETUP.md).
+
+## Deploying on Vercel
+`/vercel.json` (repo root) deploys the frontend and API as one Vercel project with Services. The worker
+must run elsewhere (Render/Railway/Fly). See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#vercel-single-project-with-services).
 
 ## Tests
 ```bash

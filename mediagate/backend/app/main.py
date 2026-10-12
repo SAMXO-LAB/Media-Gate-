@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -18,17 +19,33 @@ from app.routes import admin, analyze, connections, files, health, jobs
 
 log = logging.getLogger("mediagate")
 MAX_BODY_BYTES = 16 * 1024
+# Serverless (Vercel Functions): many short-lived instances share the Supabase pooler, so keep
+# each instance's pool small. Containers keep a larger pool.
+ON_VERCEL = bool(os.getenv("VERCEL"))
+POOL_MAX = 3 if ON_VERCEL else 10
+
+
+async def ensure_ready() -> None:
+    """Idempotent: open the DB pool and refresh admin config if stale.
+
+    Called from lifespan in containers and lazily per request, so the API also works on
+    runtimes that don't run ASGI lifespan or freeze background tasks between requests."""
+    from app.services import db, runtime_config
+    if db._pool is None:
+        await db.init_pool(max_size=POOL_MAX)
+    await runtime_config.maybe_refresh(max_age=30)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from app.services import db, runtime_config
-    await db.init_pool()
-    task = asyncio.create_task(runtime_config.refresh_loop())
+    await ensure_ready()
+    task = None if ON_VERCEL else asyncio.create_task(runtime_config.refresh_loop())
     try:
         yield
     finally:
-        task.cancel()
+        if task:
+            task.cancel()
         await db.close_pool()
 
 
@@ -39,9 +56,10 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
         title="MediaGate API", version="1.0.0",
         description="Authorized media analysis and download for YouTube, Instagram and X.",
         lifespan=lifespan if with_lifespan else None,
-        docs_url=None if settings.is_production else "/docs",
-        redoc_url=None if settings.is_production else "/redoc",
-        openapi_url=None if settings.is_production else "/openapi.json",
+        # Under /api so they're reachable through the Vercel /api/* rewrite (dev only).
+        docs_url=None if settings.is_production else "/api/docs",
+        redoc_url=None if settings.is_production else "/api/redoc",
+        openapi_url=None if settings.is_production else "/api/openapi.json",
     )
     install_error_handlers(app)
 
@@ -59,6 +77,13 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
             return JSONResponse({"error": {"code": "payload_too_large", "message": "Request body too large.",
                                            "details": None, "request_id": request.state.request_id}}, 413)
         start = time.perf_counter()
+        if with_lifespan:
+            try:
+                await ensure_ready()
+            except Exception:  # noqa: BLE001
+                log.exception("startup_failed")
+                return JSONResponse({"error": {"code": "unavailable", "message": "Service is starting up. Please retry.",
+                                               "details": None, "request_id": request.state.request_id}}, 503)
         response = await call_next(request)
         h = response.headers
         h["X-Request-ID"] = request.state.request_id
@@ -67,7 +92,7 @@ def create_app(*, with_lifespan: bool = True) -> FastAPI:
         h["Referrer-Policy"] = "no-referrer"
         h["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         h["Cross-Origin-Opener-Policy"] = "same-origin"
-        if not request.url.path.startswith(("/docs", "/redoc")):
+        if not request.url.path.startswith(("/api/docs", "/api/redoc")):
             h["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
         if settings.is_production:
             h["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
